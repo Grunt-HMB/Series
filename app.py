@@ -305,7 +305,7 @@ if zoekterm.strip():
             with st.container(border=True):
                 col1, col2 = st.columns([1, 2])
 
-                # --- SAMENVATTING (altijd zichtbaar)
+                # ---------- SAMENVATTING (ALTIJD ZICHTBAAR)
                 with col1:
                     if poster_url:
                         st.image(poster_url, use_container_width=True)
@@ -320,6 +320,7 @@ if zoekterm.strip():
                     else:
                         st.markdown("⚪ **Not started**")
 
+                    # 🔑 PROGRESS EXPLICIET HIER
                     st.progress(row["PERCENT"] / 100)
 
                     st.markdown(
@@ -329,8 +330,8 @@ if zoekterm.strip():
                         """
                     )
 
-                # --- DETAILS (desktop open, mobiel compact)
-                with st.expander("Details"):
+                # ---------- DETAILS (DESKTOP OPEN, MOBIEL INKLAPBAAR)
+                with st.expander("Details", expanded=True):
                     st.markdown(
                         render_genre_badges(row["GENRE"]),
                         unsafe_allow_html=True
