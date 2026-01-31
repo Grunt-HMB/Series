@@ -277,14 +277,12 @@ if zoekterm.strip():
                         f"S{prog['season']:02d}E{prog['episode']:02d} · {seen}"
                     )
 
-                # --- Episodes left & Progress naast elkaar
-                c1, c2 = st.columns([1, 2])
-                with c1:
-                    st.markdown(f"⏳ **Episodes left:** {episodes_left}")
-                with c2:
-                    st.markdown(
-                        f"📊 **Progress:** {watched} / {total} ({percent}%)"
-                    )
+                # -------- COMPACTE STATUSREGEL (FIX)
+                status_line = (
+                    f"⏳ **{episodes_left} left** &nbsp;&nbsp; "
+                    f"📊 **{watched} / {total} ({percent}%)**"
+                )
+                st.markdown(status_line, unsafe_allow_html=True)
 
                 # Progress bar eronder
                 st.progress(percent / 100)
