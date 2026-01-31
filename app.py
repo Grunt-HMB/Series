@@ -18,6 +18,9 @@ logger = logging.getLogger(__name__)
 
 # Streamlit logging helper
 def log(msg, level="info"):
+    if not DEBUG:
+        return
+
     if level == "error":
         logger.error(msg)
         st.error(msg)
@@ -27,6 +30,7 @@ def log(msg, level="info"):
     else:
         logger.info(msg)
         st.info(msg)
+
 
 # =========================================================
 # CONFIG
