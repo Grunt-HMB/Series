@@ -176,28 +176,28 @@ def render_genre_badges(genre_text):
     if not genres:
         return ""
 
-    badges = ""
+    badges_html = ""
     for g in genres:
-        badges += f"""
-        <span style="
-            display:inline-block;
-            background-color:#eef2f7;
-            color:#333;
-            padding:4px 10px;
-            margin:2px 6px 2px 0;
-            border-radius:12px;
-            font-size:0.8rem;
-            white-space:nowrap;
-        ">
-            {g}
-        </span>
-        """
+        badges_html += (
+            '<span style="'
+            'display:inline-block;'
+            'background-color:#eef2f7;'
+            'color:#333;'
+            'padding:4px 10px;'
+            'margin:2px 6px 2px 0;'
+            'border-radius:12px;'
+            'font-size:0.8rem;'
+            'white-space:nowrap;'
+            '">'
+            f'{g}'
+            '</span>'
+        )
 
-    return f"""
-    <div style="max-height:3.4em; overflow-y:auto; margin-top:6px;">
-        {badges}
-    </div>
-    """
+    return (
+        '<div style="max-height:3.4em; overflow-y:auto; margin-top:6px;">'
+        f'{badges_html}'
+        '</div>'
+    )
 
 # =========================================================
 # DATABASE QUERY
@@ -285,6 +285,7 @@ Seizoen {prog['season']} · Episode {prog['episode']}
                         """
                     )
 
+                    # 🔑 GENRE BADGES – DIT IS CRUCIAAL
                     st.markdown(
                         render_genre_badges(row["GENRE"]),
                         unsafe_allow_html=True
