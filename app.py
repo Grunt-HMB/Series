@@ -3,12 +3,13 @@ import sqlite3
 import requests
 import pandas as pd
 import re
+from datetime import datetime
 
 # =========================================================
 # CONFIG
 # =========================================================
 st.set_page_config(
-    page_title="Trakt – Series Progress",
+    page_title="Series Progress",
     layout="centered"
 )
 
@@ -119,14 +120,14 @@ def get_tmdb_poster(tmdb_id):
 # =========================================================
 def parse_progress(progress):
     if not progress or progress.strip() == "#N/A":
-        return {"status": "Niet gestart"}
+        return {"status": "Not started", "date": None}
 
     match = re.search(r"S(\d{2})E(\d{2})\s*←-→\s*(.+)", progress)
     if not match:
-        return {"status": "Onbekend"}
+        return {"status": "Unknown", "date": None}
 
     return {
-        "status": "Bezig",
+        "status": "Watching",
         "season": int(match.group(1)),
         "episode": int(match.group(2)),
         "date": match.group(3)
@@ -149,6 +150,22 @@ def parse_season_episodes(value):
 
     percent = round((watched / total) * 100, 1) if total > 0 else 0
     return watched, total, percent
+
+# =========================================================
+# STATUS & SORTERING
+# =========================================================
+def determine_status(watched, total):
+    if total > 0 and watched == total:
+        return "Completed"
+    if watched > 0:
+        return "Watching"
+    return "Not started"
+
+def parse_date(date_str):
+    try:
+        return datetime.strptime(date_str, "%d-%m-%Y %H:%M:%S")
+    except Exception:
+        return None
 
 # =========================================================
 # GENRES → BADGES
@@ -176,9 +193,9 @@ def render_genre_badges(genre_text):
     if not genres:
         return ""
 
-    badges_html = ""
+    badges = ""
     for g in genres:
-        badges_html += (
+        badges += (
             '<span style="'
             'display:inline-block;'
             'background-color:#eef2f7;'
@@ -195,7 +212,7 @@ def render_genre_badges(genre_text):
 
     return (
         '<div style="max-height:3.4em; overflow-y:auto; margin-top:6px;">'
-        f'{badges_html}'
+        f'{badges}'
         '</div>'
     )
 
@@ -215,12 +232,10 @@ def search_series(search_term):
             TMDB_ID,
             PROGRESS,
             SEASONSEPISODES,
-            VIEWSTATUS,
             RATING,
             UPDATED
         FROM tbl_Trakt
         WHERE NAAM LIKE ?
-        ORDER BY NAAM
     """
 
     df = pd.read_sql_query(
@@ -233,24 +248,61 @@ def search_series(search_term):
     return df
 
 # =========================================================
-# UI
+# UI – TITLE
 # =========================================================
-st.title("📺 Trakt – Series Progress")
-
-zoekterm = st.text_input(
-    "Zoek een serie:",
-    placeholder="bv. Yellowstone, The Bear, …"
+st.markdown(
+    """
+    <h1 style="margin-bottom:0.2em;">📺 Series Progress</h1>
+    <p style="color:#666; margin-top:0;">
+        Track what you're watching, what's next, and what's done.
+    </p>
+    """,
+    unsafe_allow_html=True
 )
 
+zoekterm = st.text_input(
+    "Search series:",
+    placeholder="e.g. Yellowstone, The Bear, …"
+)
+
+# =========================================================
+# UI – RESULTS
+# =========================================================
 if zoekterm.strip():
     df = search_series(zoekterm)
 
     if df.empty:
-        st.warning("Geen resultaten gevonden.")
+        st.warning("No results found.")
     else:
+        enriched = []
+
         for _, row in df.iterrows():
-            prog = parse_progress(row["PROGRESS"])
             watched, total, percent = parse_season_episodes(row["SEASONSEPISODES"])
+            status = determine_status(watched, total)
+
+            prog = parse_progress(row["PROGRESS"])
+            last_seen = parse_date(prog.get("date"))
+
+            enriched.append({
+                **row,
+                "STATUS": status,
+                "WATCHED": watched,
+                "TOTAL": total,
+                "PERCENT": percent,
+                "LAST_SEEN": last_seen
+            })
+
+        df = pd.DataFrame(enriched)
+
+        status_order = {"Watching": 0, "Not started": 1, "Completed": 2}
+        df["STATUS_ORDER"] = df["STATUS"].map(status_order)
+
+        df = df.sort_values(
+            by=["STATUS_ORDER", "LAST_SEEN"],
+            ascending=[True, False]
+        )
+
+        for _, row in df.iterrows():
             poster_url = get_tmdb_poster(row["TMDB_ID"])
 
             with st.container(border=True):
@@ -259,33 +311,26 @@ if zoekterm.strip():
                 with col1:
                     if poster_url:
                         st.image(poster_url, use_container_width=True)
-                    else:
-                        st.caption("Geen cover")
 
                 with col2:
                     st.subheader(f"{row['NAAM']} ({row['YEAR']})")
 
-                    if prog["status"] == "Bezig":
-                        st.markdown(
-                            f"""
-🟢 **Laatst bekeken:**  
-Seizoen {prog['season']} · Episode {prog['episode']}  
-🕒 {prog['date']}
-                            """
-                        )
+                    if row["STATUS"] == "Completed":
+                        st.markdown("🟢 **Completed**")
+                    elif row["STATUS"] == "Watching":
+                        st.markdown("🔵 **Watching**")
                     else:
-                        st.markdown("🟡 **Niet gestart**")
+                        st.markdown("⚪ **Not started**")
 
-                    st.progress(percent / 100)
+                    st.progress(row["PERCENT"] / 100)
 
                     st.markdown(
                         f"""
-📊 **Voortgang:** {watched} / {total} ({percent}%)  
-**Rating:** {row['RATING']}
+📊 **Progress:** {row['WATCHED']} / {row['TOTAL']} ({row['PERCENT']}%)  
+⭐ **Rating:** {row['RATING']}
                         """
                     )
 
-                    # 🔑 GENRE BADGES – DIT IS CRUCIAAL
                     st.markdown(
                         render_genre_badges(row["GENRE"]),
                         unsafe_allow_html=True
@@ -294,5 +339,3 @@ Seizoen {prog['season']} · Episode {prog['episode']}
                     if row["PLOT"]:
                         st.markdown("**Plot:**")
                         st.write(row["PLOT"])
-
-                    st.caption(f"Laatst bijgewerkt: {row['UPDATED']}")
