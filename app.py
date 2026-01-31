@@ -177,6 +177,7 @@ if zoekterm.strip():
         for _, row in df.iterrows():
             watched, total, percent = parse_season_episodes(row["SEASONSEPISODES"])
             status = determine_status(watched, total)
+            episodes_left = max(total - watched, 0)
 
             prog = parse_progress(row["PROGRESS"])
             last_seen_dt = parse_date(prog["date"])
@@ -203,7 +204,7 @@ if zoekterm.strip():
                     else:
                         st.markdown("⚪ **Not started**")
 
-                    # 🔑 LAATST GEZIEN
+                    # LAATST GEZIEN
                     if status == "Watching" and prog["season"] is not None:
                         last_seen_str = (
                             last_seen_dt.strftime("%d-%m-%Y %H:%M")
@@ -213,6 +214,11 @@ if zoekterm.strip():
                         st.markdown(
                             f"👁️ **Laatst gezien:** "
                             f"S{prog['season']:02d}E{prog['episode']:02d} · {last_seen_str}"
+                        )
+
+                        # 🔑 EPISODES LEFT
+                        st.markdown(
+                            f"⏳ **Episodes left:** {episodes_left}"
                         )
 
                     # PROGRESS
