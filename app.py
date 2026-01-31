@@ -122,14 +122,14 @@ def parse_progress(progress):
     if not progress or progress.strip() == "#N/A":
         return {"season": None, "episode": None, "date": None}
 
-    match = re.search(r"S(\d{2})E(\d{2})\s*←-→\s*(.+)", progress)
-    if not match:
+    m = re.search(r"S(\d{2})E(\d{2})\s*←-→\s*(.+)", progress)
+    if not m:
         return {"season": None, "episode": None, "date": None}
 
     return {
-        "season": int(match.group(1)),
-        "episode": int(match.group(2)),
-        "date": match.group(3)
+        "season": int(m.group(1)),
+        "episode": int(m.group(2)),
+        "date": m.group(3)
     }
 
 def parse_season_episodes(value):
@@ -137,7 +137,7 @@ def parse_season_episodes(value):
     total = 0
 
     if not value or value.strip() == "#N/A":
-        return watched, total, 0
+        return watched, total, 0.0
 
     for part in value.split("§"):
         try:
@@ -147,7 +147,7 @@ def parse_season_episodes(value):
         except ValueError:
             pass
 
-    percent = round((watched / total) * 100, 1) if total > 0 else 0
+    percent = round((watched / total) * 100, 1) if total > 0 else 0.0
     return watched, total, percent
 
 def determine_status(watched, total):
@@ -166,34 +166,29 @@ def parse_date(date_str):
 # =========================================================
 # GENRES → BADGES
 # =========================================================
-def normalize_genres(raw_genre_text):
-    if not raw_genre_text:
+def normalize_genres(raw):
+    if not raw:
         return []
-
-    raw_genres = [g.strip() for g in raw_genre_text.split(",")]
-    normalized = []
-
-    for g in raw_genres:
+    result = []
+    for g in [x.strip() for x in raw.split(",")]:
         key = g.lower()
         if key in GENRE_BLACKLIST:
             continue
-        canonical = GENRE_CANONICAL.get(key, g.title())
-        if canonical not in normalized:
-            normalized.append(canonical)
+        canon = GENRE_CANONICAL.get(key, g.title())
+        if canon not in result:
+            result.append(canon)
+    return result
 
-    return normalized
-
-def render_genre_badges(genre_text):
-    genres = normalize_genres(genre_text)
+def render_genre_badges(raw):
+    genres = normalize_genres(raw)
     if not genres:
         return ""
-
-    badges = ""
+    html = ""
     for g in genres:
-        badges += (
+        html += (
             '<span style="'
             'display:inline-block;'
-            'background-color:#eef2f7;'
+            'background:#eef2f7;'
             'color:#333;'
             'padding:4px 10px;'
             'margin:2px 6px 2px 0;'
@@ -201,33 +196,25 @@ def render_genre_badges(genre_text):
             'font-size:0.8rem;'
             'white-space:nowrap;'
             '">'
-            f'{g}'
-            '</span>'
+            f'{g}</span>'
         )
-
-    return f'<div style="margin-top:6px;">{badges}</div>'
+    return f'<div style="margin-top:6px;">{html}</div>'
 
 # =========================================================
 # DATABASE QUERY
 # =========================================================
-def search_series(search_term):
+def search_series(term):
     conn = sqlite3.connect(download_db())
     df = pd.read_sql_query(
         """
         SELECT
-            NAAM,
-            YEAR,
-            PLOT,
-            GENRE,
-            TMDB_ID,
-            PROGRESS,
-            SEASONSEPISODES,
-            UPDATED
+            NAAM, YEAR, PLOT, GENRE, TMDB_ID,
+            PROGRESS, SEASONSEPISODES, UPDATED
         FROM tbl_Trakt
         WHERE NAAM LIKE ?
         """,
         conn,
-        params=(f"%{search_term}%",)
+        params=(f"%{term}%",)
     )
     conn.close()
     return df
@@ -265,10 +252,12 @@ if zoekterm.strip():
         with st.container(border=True):
             col1, col2 = st.columns([1, 2])
 
+            # POSTER
             with col1:
                 if poster_url:
                     st.image(poster_url, use_container_width=True)
 
+            # INFO
             with col2:
                 st.subheader(f"{row['NAAM']} ({row['YEAR']})")
 
@@ -287,11 +276,20 @@ if zoekterm.strip():
                         f"👁️ **Laatst gezien:** "
                         f"S{prog['season']:02d}E{prog['episode']:02d} · {seen}"
                     )
+
+                # --- Episodes left & Progress naast elkaar
+                c1, c2 = st.columns([1, 2])
+                with c1:
                     st.markdown(f"⏳ **Episodes left:** {episodes_left}")
+                with c2:
+                    st.markdown(
+                        f"📊 **Progress:** {watched} / {total} ({percent}%)"
+                    )
 
+                # Progress bar eronder
                 st.progress(percent / 100)
-                st.markdown(f"📊 **Progress:** {watched} / {total} ({percent}%)")
 
+            # DETAILS
             with st.expander("Details", expanded=True):
                 st.markdown(
                     render_genre_badges(row["GENRE"]),
