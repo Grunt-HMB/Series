@@ -19,8 +19,67 @@ DROPBOX_DB_URL = (
 )
 
 LOCAL_DB = "Trakt_DBase.db"
+
 TMDB_API_KEY = st.secrets["TMDB_API_KEY"]
 TMDB_IMG_BASE = "https://image.tmdb.org/t/p/w300"
+
+# =========================================================
+# GENRE NORMALISATIE
+# =========================================================
+GENRE_CANONICAL = {
+    "action": "Action",
+    "adventure": "Adventure",
+    "animation": "Animation",
+    "children": "Children",
+    "family": "Family",
+    "drama": "Drama",
+    "thriller": "Thriller",
+    "suspense": "Suspense",
+    "mystery": "Mystery",
+    "crime": "Crime",
+    "fantasy": "Fantasy",
+    "horror": "Horror",
+    "science-fiction": "Sci-Fi",
+    "scifi": "Sci-Fi",
+    "comedy": "Comedy",
+    "romance": "Romance",
+    "reality": "Reality",
+    "documentary": "Documentary",
+    "documentaire": "Documentary",
+    "doctor": "Medical",
+    "doctors": "Medical",
+    "lawyers": "Legal",
+    "cops": "Police",
+    "fbi": "FBI",
+    "cia": "CIA",
+    "spy": "Spy",
+    "marvel": "Marvel",
+    "dc comics": "DC Comics",
+    "star wars": "Star Wars",
+    "star trek": "Star Trek",
+    "superhero": "Superhero",
+    "heroes": "Heroes",
+    "vampires": "Vampires",
+    "zombies": "Zombies",
+    "monsters": "Monsters",
+    "war": "War",
+    "western": "Western",
+    "sport": "Sport",
+    "music": "Music",
+    "history": "History",
+    "holiday": "Holiday",
+    "talk-show": "Talk Show",
+    "game-show": "Game Show",
+    "special-interest": "Special Interest",
+}
+
+GENRE_BLACKLIST = {
+    "delete",
+    "delete?",
+    "delete!?",
+    "selecteer genres...",
+    ""
+}
 
 # =========================================================
 # DOWNLOAD DB (CACHED)
@@ -34,18 +93,18 @@ def download_db():
     return LOCAL_DB
 
 # =========================================================
-# TMDB POSTER
+# TMDB POSTER (CACHED)
 # =========================================================
-@st.cache_data(ttl=86400)  # 24 uur
+@st.cache_data(ttl=86400)
 def get_tmdb_poster(tmdb_id):
     if not tmdb_id:
         return None
-
-    url = f"https://api.themoviedb.org/3/tv/{tmdb_id}"
-    params = {"api_key": TMDB_API_KEY}
-
     try:
-        r = requests.get(url, params=params, timeout=10)
+        r = requests.get(
+            f"https://api.themoviedb.org/3/tv/{tmdb_id}",
+            params={"api_key": TMDB_API_KEY},
+            timeout=10
+        )
         r.raise_for_status()
         data = r.json()
         poster_path = data.get("poster_path")
@@ -53,7 +112,6 @@ def get_tmdb_poster(tmdb_id):
             return TMDB_IMG_BASE + poster_path
     except Exception:
         pass
-
     return None
 
 # =========================================================
@@ -91,6 +149,55 @@ def parse_season_episodes(value):
 
     percent = round((watched / total) * 100, 1) if total > 0 else 0
     return watched, total, percent
+
+# =========================================================
+# GENRES → BADGES
+# =========================================================
+def normalize_genres(raw_genre_text):
+    if not raw_genre_text:
+        return []
+
+    raw_genres = [g.strip() for g in raw_genre_text.split(",")]
+    normalized = []
+
+    for g in raw_genres:
+        key = g.lower().strip()
+        if key in GENRE_BLACKLIST:
+            continue
+
+        canonical = GENRE_CANONICAL.get(key, g.title())
+        if canonical not in normalized:
+            normalized.append(canonical)
+
+    return normalized
+
+def render_genre_badges(genre_text):
+    genres = normalize_genres(genre_text)
+    if not genres:
+        return ""
+
+    badges = ""
+    for g in genres:
+        badges += f"""
+        <span style="
+            display:inline-block;
+            background-color:#eef2f7;
+            color:#333;
+            padding:4px 10px;
+            margin:2px 6px 2px 0;
+            border-radius:12px;
+            font-size:0.8rem;
+            white-space:nowrap;
+        ">
+            {g}
+        </span>
+        """
+
+    return f"""
+    <div style="max-height:3.4em; overflow-y:auto; margin-top:6px;">
+        {badges}
+    </div>
+    """
 
 # =========================================================
 # DATABASE QUERY
@@ -147,17 +254,15 @@ if zoekterm.strip():
             poster_url = get_tmdb_poster(row["TMDB_ID"])
 
             with st.container(border=True):
-                cols = st.columns([1, 2])
+                col1, col2 = st.columns([1, 2])
 
-                # COVER
-                with cols[0]:
+                with col1:
                     if poster_url:
                         st.image(poster_url, use_container_width=True)
                     else:
                         st.caption("Geen cover")
 
-                # INFO
-                with cols[1]:
+                with col2:
                     st.subheader(f"{row['NAAM']} ({row['YEAR']})")
 
                     if prog["status"] == "Bezig":
@@ -176,9 +281,13 @@ Seizoen {prog['season']} · Episode {prog['episode']}
                     st.markdown(
                         f"""
 📊 **Voortgang:** {watched} / {total} ({percent}%)  
-**Genre:** {row['GENRE']}  
 **Rating:** {row['RATING']}
                         """
+                    )
+
+                    st.markdown(
+                        render_genre_badges(row["GENRE"]),
+                        unsafe_allow_html=True
                     )
 
                     if row["PLOT"]:
