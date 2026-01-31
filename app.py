@@ -19,6 +19,8 @@ DROPBOX_DB_URL = (
 )
 
 LOCAL_DB = "Trakt_DBase.db"
+TMDB_API_KEY = st.secrets["TMDB_API_KEY"]
+TMDB_IMG_BASE = "https://image.tmdb.org/t/p/w300"
 
 # =========================================================
 # DOWNLOAD DB (CACHED)
@@ -27,36 +29,43 @@ LOCAL_DB = "Trakt_DBase.db"
 def download_db():
     r = requests.get(DROPBOX_DB_URL, timeout=30)
     r.raise_for_status()
-
     with open(LOCAL_DB, "wb") as f:
         f.write(r.content)
-
     return LOCAL_DB
+
+# =========================================================
+# TMDB POSTER
+# =========================================================
+@st.cache_data(ttl=86400)  # 24 uur
+def get_tmdb_poster(tmdb_id):
+    if not tmdb_id:
+        return None
+
+    url = f"https://api.themoviedb.org/3/tv/{tmdb_id}"
+    params = {"api_key": TMDB_API_KEY}
+
+    try:
+        r = requests.get(url, params=params, timeout=10)
+        r.raise_for_status()
+        data = r.json()
+        poster_path = data.get("poster_path")
+        if poster_path:
+            return TMDB_IMG_BASE + poster_path
+    except Exception:
+        pass
+
+    return None
 
 # =========================================================
 # PARSERS
 # =========================================================
 def parse_progress(progress):
     if not progress or progress.strip() == "#N/A":
-        return {
-            "status": "Niet gestart",
-            "season": None,
-            "episode": None,
-            "date": None
-        }
+        return {"status": "Niet gestart"}
 
-    match = re.search(
-        r"S(\d{2})E(\d{2})\s*←-→\s*(.+)",
-        progress
-    )
-
+    match = re.search(r"S(\d{2})E(\d{2})\s*←-→\s*(.+)", progress)
     if not match:
-        return {
-            "status": "Onbekend",
-            "season": None,
-            "episode": None,
-            "date": None
-        }
+        return {"status": "Onbekend"}
 
     return {
         "status": "Bezig",
@@ -72,8 +81,7 @@ def parse_season_episodes(value):
     if not value or value.strip() == "#N/A":
         return watched, total, 0
 
-    parts = value.split("§")
-    for part in parts:
+    for part in value.split("§"):
         try:
             w, t = part.split("/")
             watched += int(w)
@@ -95,6 +103,9 @@ def search_series(search_term):
         SELECT
             NAAM,
             YEAR,
+            PLOT,
+            GENRE,
+            TMDB_ID,
             PROGRESS,
             SEASONSEPISODES,
             VIEWSTATUS,
@@ -120,7 +131,7 @@ def search_series(search_term):
 st.title("📺 Trakt – Series Progress")
 
 zoekterm = st.text_input(
-    "Zoek een serie (deel van naam):",
+    "Zoek een serie:",
     placeholder="bv. Yellowstone, The Bear, …"
 )
 
@@ -132,33 +143,46 @@ if zoekterm.strip():
     else:
         for _, row in df.iterrows():
             prog = parse_progress(row["PROGRESS"])
-            watched, total, percent = parse_season_episodes(
-                row["SEASONSEPISODES"]
-            )
+            watched, total, percent = parse_season_episodes(row["SEASONSEPISODES"])
+            poster_url = get_tmdb_poster(row["TMDB_ID"])
 
             with st.container(border=True):
-                st.subheader(f"{row['NAAM']} ({row['YEAR']})")
+                cols = st.columns([1, 2])
 
-                if prog["status"] == "Niet gestart":
-                    st.markdown("🟡 **Niet gestart**")
-                else:
-                    st.markdown(
-                        f"""
+                # COVER
+                with cols[0]:
+                    if poster_url:
+                        st.image(poster_url, use_container_width=True)
+                    else:
+                        st.caption("Geen cover")
+
+                # INFO
+                with cols[1]:
+                    st.subheader(f"{row['NAAM']} ({row['YEAR']})")
+
+                    if prog["status"] == "Bezig":
+                        st.markdown(
+                            f"""
 🟢 **Laatst bekeken:**  
 Seizoen {prog['season']} · Episode {prog['episode']}  
 🕒 {prog['date']}
+                            """
+                        )
+                    else:
+                        st.markdown("🟡 **Niet gestart**")
+
+                    st.progress(percent / 100)
+
+                    st.markdown(
+                        f"""
+📊 **Voortgang:** {watched} / {total} ({percent}%)  
+**Genre:** {row['GENRE']}  
+**Rating:** {row['RATING']}
                         """
                     )
 
-                st.progress(percent / 100)
+                    if row["PLOT"]:
+                        st.markdown("**Plot:**")
+                        st.write(row["PLOT"])
 
-                st.markdown(
-                    f"""
-📊 **Voortgang:** {watched} / {total}  
-📈 **Percentage:** {percent}%  
-
-**Viewstatus:** `{row['VIEWSTATUS']}`  
-**Rating:** `{row['RATING']}`  
-**Laatste update:** `{row['UPDATED']}`
-                    """
-                )
+                    st.caption(f"Laatst bijgewerkt: {row['UPDATED']}")
