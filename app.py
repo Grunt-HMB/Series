@@ -25,6 +25,64 @@ TMDB_API_KEY = st.secrets["TMDB_API_KEY"]
 TMDB_IMG_BASE = "https://image.tmdb.org/t/p/w300"
 
 # =========================================================
+# GENRE NORMALISATIE
+# =========================================================
+GENRE_CANONICAL = {
+    "action": "Action",
+    "adventure": "Adventure",
+    "animation": "Animation",
+    "children": "Children",
+    "family": "Family",
+    "drama": "Drama",
+    "thriller": "Thriller",
+    "suspense": "Suspense",
+    "mystery": "Mystery",
+    "crime": "Crime",
+    "fantasy": "Fantasy",
+    "horror": "Horror",
+    "science-fiction": "Sci-Fi",
+    "scifi": "Sci-Fi",
+    "comedy": "Comedy",
+    "romance": "Romance",
+    "reality": "Reality",
+    "documentary": "Documentary",
+    "documentaire": "Documentary",
+    "doctor": "Medical",
+    "doctors": "Medical",
+    "lawyers": "Legal",
+    "cops": "Police",
+    "fbi": "FBI",
+    "cia": "CIA",
+    "spy": "Spy",
+    "marvel": "Marvel",
+    "dc comics": "DC Comics",
+    "star wars": "Star Wars",
+    "star trek": "Star Trek",
+    "superhero": "Superhero",
+    "heroes": "Heroes",
+    "vampires": "Vampires",
+    "zombies": "Zombies",
+    "monsters": "Monsters",
+    "war": "War",
+    "western": "Western",
+    "sport": "Sport",
+    "music": "Music",
+    "history": "History",
+    "holiday": "Holiday",
+    "talk-show": "Talk Show",
+    "game-show": "Game Show",
+    "special-interest": "Special Interest",
+}
+
+GENRE_BLACKLIST = {
+    "delete",
+    "delete?",
+    "delete!?",
+    "selecteer genres...",
+    ""
+}
+
+# =========================================================
 # DOWNLOAD DB (CACHED)
 # =========================================================
 @st.cache_data(ttl=600)
@@ -62,24 +120,13 @@ def get_tmdb_poster(tmdb_id):
 # =========================================================
 def parse_progress(progress):
     if not progress or progress.strip() == "#N/A":
-        return {
-            "status": "Not started",
-            "season": None,
-            "episode": None,
-            "date": None
-        }
+        return {"season": None, "episode": None, "date": None}
 
     match = re.search(r"S(\d{2})E(\d{2})\s*←-→\s*(.+)", progress)
     if not match:
-        return {
-            "status": "Unknown",
-            "season": None,
-            "episode": None,
-            "date": None
-        }
+        return {"season": None, "episode": None, "date": None}
 
     return {
-        "status": "Watching",
         "season": int(match.group(1)),
         "episode": int(match.group(2)),
         "date": match.group(3)
@@ -117,13 +164,56 @@ def parse_date(date_str):
         return None
 
 # =========================================================
+# GENRES → BADGES
+# =========================================================
+def normalize_genres(raw_genre_text):
+    if not raw_genre_text:
+        return []
+
+    raw_genres = [g.strip() for g in raw_genre_text.split(",")]
+    normalized = []
+
+    for g in raw_genres:
+        key = g.lower()
+        if key in GENRE_BLACKLIST:
+            continue
+        canonical = GENRE_CANONICAL.get(key, g.title())
+        if canonical not in normalized:
+            normalized.append(canonical)
+
+    return normalized
+
+def render_genre_badges(genre_text):
+    genres = normalize_genres(genre_text)
+    if not genres:
+        return ""
+
+    badges = ""
+    for g in genres:
+        badges += (
+            '<span style="'
+            'display:inline-block;'
+            'background-color:#eef2f7;'
+            'color:#333;'
+            'padding:4px 10px;'
+            'margin:2px 6px 2px 0;'
+            'border-radius:12px;'
+            'font-size:0.8rem;'
+            'white-space:nowrap;'
+            '">'
+            f'{g}'
+            '</span>'
+        )
+
+    return f'<div style="margin-top:6px;">{badges}</div>'
+
+# =========================================================
 # DATABASE QUERY
 # =========================================================
 def search_series(search_term):
-    db_path = download_db()
-    conn = sqlite3.connect(db_path)
-
-    query = """
+    conn = sqlite3.connect(download_db())
+    df = pd.read_sql_query(
+        """
         SELECT
             NAAM,
             YEAR,
@@ -132,18 +222,13 @@ def search_series(search_term):
             TMDB_ID,
             PROGRESS,
             SEASONSEPISODES,
-            RATING,
             UPDATED
         FROM tbl_Trakt
         WHERE NAAM LIKE ?
-    """
-
-    df = pd.read_sql_query(
-        query,
+        """,
         conn,
         params=(f"%{search_term}%",)
     )
-
     conn.close()
     return df
 
@@ -160,10 +245,7 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-zoekterm = st.text_input(
-    "Search series:",
-    placeholder="e.g. Yellowstone, The Bear, …"
-)
+zoekterm = st.text_input("Search series:")
 
 # =========================================================
 # UI – RESULTS
@@ -171,73 +253,53 @@ zoekterm = st.text_input(
 if zoekterm.strip():
     df = search_series(zoekterm)
 
-    if df.empty:
-        st.warning("No results found.")
-    else:
-        for _, row in df.iterrows():
-            watched, total, percent = parse_season_episodes(row["SEASONSEPISODES"])
-            status = determine_status(watched, total)
-            episodes_left = max(total - watched, 0)
+    for _, row in df.iterrows():
+        watched, total, percent = parse_season_episodes(row["SEASONSEPISODES"])
+        status = determine_status(watched, total)
+        episodes_left = max(total - watched, 0)
 
-            prog = parse_progress(row["PROGRESS"])
-            last_seen_dt = parse_date(prog["date"])
+        prog = parse_progress(row["PROGRESS"])
+        last_seen_dt = parse_date(prog["date"])
+        poster_url = get_tmdb_poster(row["TMDB_ID"])
 
-            poster_url = get_tmdb_poster(row["TMDB_ID"])
+        with st.container(border=True):
+            col1, col2 = st.columns([1, 2])
 
-            with st.container(border=True):
-                col1, col2 = st.columns([1, 2])
+            with col1:
+                if poster_url:
+                    st.image(poster_url, use_container_width=True)
 
-                # POSTER
-                with col1:
-                    if poster_url:
-                        st.image(poster_url, use_container_width=True)
+            with col2:
+                st.subheader(f"{row['NAAM']} ({row['YEAR']})")
 
-                # INFO
-                with col2:
-                    st.subheader(f"{row['NAAM']} ({row['YEAR']})")
+                st.markdown(
+                    "🟢 **Completed**" if status == "Completed"
+                    else "🔵 **Watching**" if status == "Watching"
+                    else "⚪ **Not started**"
+                )
 
-                    # STATUS
-                    if status == "Completed":
-                        st.markdown("🟢 **Completed**")
-                    elif status == "Watching":
-                        st.markdown("🔵 **Watching**")
-                    else:
-                        st.markdown("⚪ **Not started**")
-
-                    # LAATST GEZIEN
-                    if status == "Watching" and prog["season"] is not None:
-                        last_seen_str = (
-                            last_seen_dt.strftime("%d-%m-%Y %H:%M")
-                            if last_seen_dt else prog["date"]
-                        )
-
-                        st.markdown(
-                            f"👁️ **Laatst gezien:** "
-                            f"S{prog['season']:02d}E{prog['episode']:02d} · {last_seen_str}"
-                        )
-
-                        # 🔑 EPISODES LEFT
-                        st.markdown(
-                            f"⏳ **Episodes left:** {episodes_left}"
-                        )
-
-                    # PROGRESS
-                    st.progress(percent / 100)
-
-                    st.markdown(
-                        f"""
-📊 **Progress:** {watched} / {total} ({percent}%)  
-⭐ **Rating:** {row['RATING']}
-                        """
+                if status == "Watching" and prog["season"] is not None:
+                    seen = (
+                        last_seen_dt.strftime("%d-%m-%Y %H:%M")
+                        if last_seen_dt else prog["date"]
                     )
+                    st.markdown(
+                        f"👁️ **Laatst gezien:** "
+                        f"S{prog['season']:02d}E{prog['episode']:02d} · {seen}"
+                    )
+                    st.markdown(f"⏳ **Episodes left:** {episodes_left}")
 
-                # DETAILS
-                with st.expander("Details", expanded=True):
-                    if row["GENRE"]:
-                        st.markdown(f"**Genres:** {row['GENRE']}")
+                st.progress(percent / 100)
+                st.markdown(f"📊 **Progress:** {watched} / {total} ({percent}%)")
 
-                    if row["PLOT"]:
-                        st.markdown("**Plot:**")
-                        st.write(row["PLOT"])
+            with st.expander("Details", expanded=True):
+                st.markdown(
+                    render_genre_badges(row["GENRE"]),
+                    unsafe_allow_html=True
+                )
 
-                    st.caption(f"Last updated: {row['UPDATED']}")
+                if row["PLOT"]:
+                    st.markdown("**Plot:**")
+                    st.write(row["PLOT"])
+
+                st.caption(f"Last updated: {row['UPDATED']}")
