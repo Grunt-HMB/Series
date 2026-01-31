@@ -151,9 +151,6 @@ def parse_season_episodes(value):
     percent = round((watched / total) * 100, 1) if total > 0 else 0
     return watched, total, percent
 
-# =========================================================
-# STATUS & SORTERING
-# =========================================================
 def determine_status(watched, total):
     if total > 0 and watched == total:
         return "Completed"
@@ -308,6 +305,7 @@ if zoekterm.strip():
             with st.container(border=True):
                 col1, col2 = st.columns([1, 2])
 
+                # --- SAMENVATTING (altijd zichtbaar)
                 with col1:
                     if poster_url:
                         st.image(poster_url, use_container_width=True)
@@ -331,6 +329,8 @@ if zoekterm.strip():
                         """
                     )
 
+                # --- DETAILS (desktop open, mobiel compact)
+                with st.expander("Details"):
                     st.markdown(
                         render_genre_badges(row["GENRE"]),
                         unsafe_allow_html=True
@@ -339,3 +339,5 @@ if zoekterm.strip():
                     if row["PLOT"]:
                         st.markdown("**Plot:**")
                         st.write(row["PLOT"])
+
+                    st.caption(f"Last updated: {row['UPDATED']}")
