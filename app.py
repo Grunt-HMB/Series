@@ -5,7 +5,7 @@ import pandas as pd
 import re
 import logging
 from datetime import datetime
-
+DEBUG = False
 # =========================================================
 # LOGGING SETUP
 # =========================================================
