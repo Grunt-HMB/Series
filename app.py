@@ -270,14 +270,14 @@ def render_season_blocks(seasons):
         .season-line {
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 8px;
             margin-bottom: 11px;
             flex-wrap: wrap;
         }
 
         .season-label {
             font-weight: 700;
-            min-width: 45px;
+            min-width: 43px;
             white-space: nowrap;
         }
 
@@ -289,8 +289,8 @@ def render_season_blocks(seasons):
         }
 
         .episode-box {
-            width: 13px;
-            height: 13px;
+            width: 12px;
+            height: 12px;
             border-radius: 3px;
             display: inline-block;
         }
@@ -310,7 +310,7 @@ def render_season_blocks(seasons):
         .season-count {
             font-weight: 600;
             white-space: nowrap;
-            font-size: 0.92rem;
+            font-size: 0.88rem;
         }
         </style>
         """,
@@ -413,27 +413,45 @@ st.markdown(
 )
 
 # =========================================================
-# SIDEBAR SEARCH
+# SESSION STATE
 # =========================================================
-with st.sidebar:
-    st.header("Zoeken")
+if "gekozen_serie" not in st.session_state:
+    st.session_state["gekozen_serie"] = None
 
-    with st.expander("Onderhoud", expanded=False):
-        if st.button("Cache reset", use_container_width=True):
-            st.cache_data.clear()
-            st.session_state.clear()
+if "zoeken_actief" not in st.session_state:
+    st.session_state["zoeken_actief"] = True
+
+# =========================================================
+# ONDERHOUD
+# =========================================================
+with st.expander("Onderhoud", expanded=False):
+    if st.button("Cache reset", use_container_width=True):
+        st.cache_data.clear()
+        st.session_state.clear()
+        st.rerun()
+
+# =========================================================
+# SEARCH UI - MOBIEL
+# =========================================================
+all_series_names = load_all_series_names()
+
+if st.session_state["gekozen_serie"] and not st.session_state["zoeken_actief"]:
+    col_a, col_b = st.columns([2, 1])
+
+    with col_a:
+        st.success(f"Gekozen: {st.session_state['gekozen_serie']}")
+
+    with col_b:
+        if st.button("Andere zoeken", use_container_width=True):
+            st.session_state["zoeken_actief"] = True
             st.rerun()
 
-    all_series_names = load_all_series_names()
-
+if st.session_state["zoeken_actief"]:
     zoekterm = st_keyup(
         "Search series:",
         debounce=150,
         key="live_search"
     )
-
-    if "gekozen_serie" not in st.session_state:
-        st.session_state["gekozen_serie"] = None
 
     if zoekterm:
         term = zoekterm.strip().lower()
@@ -462,13 +480,16 @@ with st.sidebar:
             else:
                 st.caption(f"{len(matches)} resultaten gevonden")
 
-                for i, name in enumerate(matches[:50]):
+                for i, name in enumerate(matches[:8]):
                     if st.button(name, key=f"serie_{i}_{name}", use_container_width=True):
                         st.session_state["gekozen_serie"] = name
+                        st.session_state["zoeken_actief"] = False
                         st.rerun()
 
-                if len(matches) > 50:
-                    st.caption(f"Nog {len(matches) - 50} verborgen. Typ verder om te verfijnen.")
+                if len(matches) > 8:
+                    st.caption(
+                        f"Nog {len(matches) - 8} verborgen. Typ verder om te verfijnen."
+                    )
 
 gekozen_serie = st.session_state.get("gekozen_serie")
 
@@ -476,7 +497,7 @@ gekozen_serie = st.session_state.get("gekozen_serie")
 # RESULTS
 # =========================================================
 if not gekozen_serie:
-    st.info("Zoek links in de sidebar en kies een serie.")
+    st.info("Typ minstens 3 letters en kies een serie.")
 
 if gekozen_serie:
     df = search_series_exact(gekozen_serie)
