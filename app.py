@@ -480,17 +480,12 @@ if st.session_state["zoeken_actief"]:
             else:
                 st.caption(f"{len(matches)} resultaten gevonden")
 
-                    
-                    with st.expander(f"Alle {len(matches)} resultaten tonen", expanded=True):
-                for i, name in enumerate(matches):
-                    if st.button(name, key=f"serie_{i}_{name}", use_container_width=True):
-                        st.session_state["gekozen_serie"] = name
-                        st.session_state["zoeken_actief"] = False
-                        st.rerun()
-
-
-
-
+                with st.expander(f"Alle {len(matches)} resultaten tonen", expanded=True):
+                    for i, name in enumerate(matches):
+                        if st.button(name, key=f"serie_{i}_{name}", use_container_width=True):
+                            st.session_state["gekozen_serie"] = name
+                            st.session_state["zoeken_actief"] = False
+                            st.rerun()
 
 gekozen_serie = st.session_state.get("gekozen_serie")
 
