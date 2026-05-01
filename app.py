@@ -13,13 +13,9 @@ st.set_page_config(
     layout="centered"
 )
 
-#DROPBOX_DB_URL = (
- #   "https://www.dropbox.com/scl/fi/"
- #   "bjy95x305s1r2fvgiddcv/Trakt_DBase.db"
-#    "?rlkey=kxev7chehu2mnvmag0ojt9n4g&raw=1"
-# )
 DROPBOX_DB_URL = (
-"https://www.dropbox.com/scl/fi/o7buaqqcqycet7twqzd2l/Series_Trakt_DBase.db?rlkey=zq40pf1obor3pb7b70sw24mxl&raw=1"
+    "https://www.dropbox.com/scl/fi/o7buaqqcqycet7twqzd2l/"
+    "Series_Trakt_DBase.db?rlkey=zq40pf1obor3pb7b70sw24mxl&raw=1"
 )
 
 LOCAL_DB = "Trakt_DBase.db"
@@ -92,8 +88,10 @@ GENRE_BLACKLIST = {
 def download_db():
     r = requests.get(DROPBOX_DB_URL, timeout=30)
     r.raise_for_status()
+
     with open(LOCAL_DB, "wb") as f:
         f.write(r.content)
+
     return LOCAL_DB
 
 # =========================================================
@@ -103,6 +101,7 @@ def download_db():
 def get_tmdb_poster(tmdb_id):
     if not tmdb_id:
         return None
+
     try:
         r = requests.get(
             f"https://api.themoviedb.org/3/tv/{tmdb_id}",
@@ -110,22 +109,27 @@ def get_tmdb_poster(tmdb_id):
             timeout=10
         )
         r.raise_for_status()
+
         data = r.json()
         poster_path = data.get("poster_path")
+
         if poster_path:
             return TMDB_IMG_BASE + poster_path
+
     except Exception:
         pass
+
     return None
 
 # =========================================================
 # PARSERS
 # =========================================================
 def parse_progress(progress):
-    if not progress or progress.strip() == "#N/A":
+    if not progress or str(progress).strip() == "#N/A":
         return {"season": None, "episode": None, "date": None}
 
-    m = re.search(r"S(\d{2})E(\d{2})\s*←-→\s*(.+)", progress)
+    m = re.search(r"S(\d{2})E(\d{2})\s*←-→\s*(.+)", str(progress))
+
     if not m:
         return {"season": None, "episode": None, "date": None}
 
@@ -135,34 +139,74 @@ def parse_progress(progress):
         "date": m.group(3)
     }
 
+
 def parse_season_episodes(value):
     watched = 0
     total = 0
 
-    if not value or value.strip() == "#N/A":
+    if not value or str(value).strip() == "#N/A":
         return watched, total, 0.0
 
-    for part in value.split("§"):
+    for part in str(value).split("§"):
         try:
             w, t = part.split("/")
             watched += int(w)
             total += int(t)
-        except ValueError:
+        except Exception:
             pass
 
     percent = round((watched / total) * 100, 1) if total > 0 else 0.0
     return watched, total, percent
 
+
+def parse_seasons(value):
+    seasons = []
+
+    if not value or str(value).strip() == "#N/A":
+        return seasons
+
+    parts = str(value).split("§")
+
+    for idx, part in enumerate(parts, start=1):
+        try:
+            watched, total = part.split("/")
+            watched = int(watched)
+            total = int(total)
+
+            left = max(total - watched, 0)
+            percent = round((watched / total) * 100, 1) if total > 0 else 0.0
+
+            seasons.append({
+                "season": idx,
+                "watched": watched,
+                "total": total,
+                "left": left,
+                "percent": percent,
+                "completed": total > 0 and watched == total
+            })
+
+        except Exception:
+            pass
+
+    return seasons
+
+
 def determine_status(watched, total):
     if total > 0 and watched == total:
         return "Completed"
+
     if watched > 0:
         return "Watching"
+
     return "Not started"
 
+
 def parse_date(date_str):
+    if not date_str:
+        return None
+
     try:
-        return datetime.strptime(date_str, "%d-%m-%Y %H:%M:%S")
+        return datetime.strptime(str(date_str), "%d-%m-%Y %H:%M:%S")
     except Exception:
         return None
 
@@ -172,21 +216,31 @@ def parse_date(date_str):
 def normalize_genres(raw):
     if not raw:
         return []
+
     result = []
-    for g in [x.strip() for x in raw.split(",")]:
+
+    for g in [x.strip() for x in str(raw).split(",")]:
         key = g.lower()
+
         if key in GENRE_BLACKLIST:
             continue
+
         canon = GENRE_CANONICAL.get(key, g.title())
+
         if canon not in result:
             result.append(canon)
+
     return result
+
 
 def render_genre_badges(raw):
     genres = normalize_genres(raw)
+
     if not genres:
         return ""
+
     html = ""
+
     for g in genres:
         html += (
             '<span style="'
@@ -201,6 +255,7 @@ def render_genre_badges(raw):
             '">'
             f'{g}</span>'
         )
+
     return f'<div style="margin-top:6px;">{html}</div>'
 
 # =========================================================
@@ -208,17 +263,26 @@ def render_genre_badges(raw):
 # =========================================================
 def search_series(term):
     conn = sqlite3.connect(download_db())
+
     df = pd.read_sql_query(
         """
         SELECT
-            NAAM, YEAR, PLOT, GENRE, TMDB_ID,
-            PROGRESS, SEASONSEPISODES, UPDATED
+            NAAM,
+            YEAR,
+            PLOT,
+            GENRE,
+            TMDB_ID,
+            PROGRESS,
+            SEASONSEPISODES,
+            UPDATED
         FROM tbl_Trakt
         WHERE NAAM LIKE ?
+        ORDER BY NAAM
         """,
         conn,
         params=(f"%{term}%",)
     )
+
     conn.close()
     return df
 
@@ -242,6 +306,9 @@ zoekterm = st.text_input("Search series:")
 # =========================================================
 if zoekterm.strip():
     df = search_series(zoekterm)
+
+    if df.empty:
+        st.warning("Geen series gevonden.")
 
     for _, row in df.iterrows():
         watched, total, percent = parse_season_episodes(row["SEASONSEPISODES"])
@@ -275,19 +342,18 @@ if zoekterm.strip():
                         last_seen_dt.strftime("%d-%m-%Y %H:%M")
                         if last_seen_dt else prog["date"]
                     )
+
                     st.markdown(
                         f"👁️ **Laatst gezien:** "
                         f"S{prog['season']:02d}E{prog['episode']:02d} · {seen}"
                     )
 
-                # -------- COMPACTE STATUSREGEL (FIX)
                 status_line = (
                     f"⏳ **{episodes_left} left** &nbsp;&nbsp; "
                     f"📊 **{watched} / {total} ({percent}%)**"
                 )
-                st.markdown(status_line, unsafe_allow_html=True)
 
-                # Progress bar eronder
+                st.markdown(status_line, unsafe_allow_html=True)
                 st.progress(percent / 100)
 
             # DETAILS
@@ -296,6 +362,29 @@ if zoekterm.strip():
                     render_genre_badges(row["GENRE"]),
                     unsafe_allow_html=True
                 )
+
+                seasons = parse_seasons(row["SEASONSEPISODES"])
+
+                if seasons:
+                    st.markdown("### Seizoenen")
+
+                    for s in seasons:
+                        icon = (
+                            "✅" if s["completed"]
+                            else "🔵" if s["watched"] > 0
+                            else "⚪"
+                        )
+
+                        line = (
+                            f"{icon} **S{s['season']:02d}** — "
+                            f"{s['watched']} / {s['total']} afleveringen"
+                        )
+
+                        if s["left"] > 0:
+                            line += f" — **{s['left']} over**"
+
+                        st.markdown(line)
+                        st.progress(s["percent"] / 100)
 
                 if row["PLOT"]:
                     st.markdown("**Plot:**")
