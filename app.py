@@ -13,11 +13,11 @@ st.set_page_config(
     layout="centered"
 )
 
-DROPBOX_DB_URL = (
-    "https://www.dropbox.com/scl/fi/"
-    "bjy95x305s1r2fvgiddcv/Trakt_DBase.db"
-    "?rlkey=kxev7chehu2mnvmag0ojt9n4g&raw=1"
-)
+#DROPBOX_DB_URL = (
+ #   "https://www.dropbox.com/scl/fi/"
+ #   "bjy95x305s1r2fvgiddcv/Trakt_DBase.db"
+#    "?rlkey=kxev7chehu2mnvmag0ojt9n4g&raw=1"
+# )
 DROPBOX_DB_URL = (
 "https://www.dropbox.com/scl/fi/"
     "4xthacqll8qp1693zahol/Trakt_DBase.db"
