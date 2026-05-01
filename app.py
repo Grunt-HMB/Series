@@ -405,13 +405,22 @@ def search_series_exact(series_name):
 if "gekozen_serie" not in st.session_state:
     st.session_state["gekozen_serie"] = None
 
-if "zoekresultaten_open" not in st.session_state:
-    st.session_state["zoekresultaten_open"] = True
+if "toon_resultaten" not in st.session_state:
+    st.session_state["toon_resultaten"] = True
+
+if "laatste_zoekterm" not in st.session_state:
+    st.session_state["laatste_zoekterm"] = ""
 
 # =========================================================
 # MAIN TITLE + REFRESH
 # =========================================================
-col_title, col_refresh = st.columns([12, 1], vertical_alignment="center")
+col_refresh, col_title = st.columns([1, 12], vertical_alignment="center")
+
+with col_refresh:
+    if st.button("⟳", help="Refresh / cache reset", use_container_width=True):
+        st.cache_data.clear()
+        st.session_state.clear()
+        st.rerun()
 
 with col_title:
     st.markdown(
@@ -423,12 +432,6 @@ with col_title:
         """,
         unsafe_allow_html=True
     )
-
-with col_refresh:
-    if st.button("⟳", help="Refresh / cache reset", use_container_width=True):
-        st.cache_data.clear()
-        st.session_state.clear()
-        st.rerun()
 
 # =========================================================
 # SEARCH UI
@@ -443,6 +446,10 @@ zoekterm = st_keyup(
 
 if zoekterm:
     term = zoekterm.strip().lower()
+
+    if term != st.session_state["laatste_zoekterm"]:
+        st.session_state["toon_resultaten"] = True
+        st.session_state["laatste_zoekterm"] = term
 
     if len(term) < 3:
         st.info("Typ minstens 3 karakters...")
@@ -468,15 +475,20 @@ if zoekterm:
         else:
             st.caption(f"{len(matches)} resultaten gevonden")
 
-            with st.expander(
-                f"Alle {len(matches)} resultaten tonen",
-                expanded=st.session_state["zoekresultaten_open"]
-            ):
+            if st.session_state["toon_resultaten"]:
+                if st.button("Zoekresultaten verbergen", use_container_width=True):
+                    st.session_state["toon_resultaten"] = False
+                    st.rerun()
+
                 for i, name in enumerate(matches):
                     if st.button(name, key=f"serie_{i}_{name}", use_container_width=True):
                         st.session_state["gekozen_serie"] = name
-                        st.session_state["zoekresultaten_open"] = False
+                        st.session_state["toon_resultaten"] = False
                         st.rerun()
+            else:
+                if st.button("Zoekresultaten tonen", use_container_width=True):
+                    st.session_state["toon_resultaten"] = True
+                    st.rerun()
 
 gekozen_serie = st.session_state.get("gekozen_serie")
 
