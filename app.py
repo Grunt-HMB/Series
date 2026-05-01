@@ -405,15 +405,18 @@ def search_series_exact(series_name):
 if "gekozen_serie" not in st.session_state:
     st.session_state["gekozen_serie"] = None
 
+if "zoekresultaten_open" not in st.session_state:
+    st.session_state["zoekresultaten_open"] = True
+
 # =========================================================
 # MAIN TITLE + REFRESH
 # =========================================================
-col_title, col_refresh = st.columns([10, 1])
+col_title, col_refresh = st.columns([12, 1], vertical_alignment="center")
 
 with col_title:
     st.markdown(
         """
-        <h1 style="margin-bottom:0.2em;">📺 Series Progress</h1>
+        <h1 style="margin-bottom:0.15em;">📺 Series Progress</h1>
         <p style="color:#666; margin-top:0;">
             Track what you're watching, what's next, and what's done.
         </p>
@@ -422,8 +425,7 @@ with col_title:
     )
 
 with col_refresh:
-    st.write("")
-    if st.button("🔄", help="Refresh / cache reset"):
+    if st.button("⟳", help="Refresh / cache reset", use_container_width=True):
         st.cache_data.clear()
         st.session_state.clear()
         st.rerun()
@@ -466,10 +468,14 @@ if zoekterm:
         else:
             st.caption(f"{len(matches)} resultaten gevonden")
 
-            with st.expander(f"Alle {len(matches)} resultaten tonen", expanded=True):
+            with st.expander(
+                f"Alle {len(matches)} resultaten tonen",
+                expanded=st.session_state["zoekresultaten_open"]
+            ):
                 for i, name in enumerate(matches):
                     if st.button(name, key=f"serie_{i}_{name}", use_container_width=True):
                         st.session_state["gekozen_serie"] = name
+                        st.session_state["zoekresultaten_open"] = False
                         st.rerun()
 
 gekozen_serie = st.session_state.get("gekozen_serie")
