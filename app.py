@@ -1,4 +1,6 @@
 import streamlit as st
+from st_keyup import st_keyup
+
 import sqlite3
 import requests
 import pandas as pd
@@ -279,6 +281,7 @@ def load_all_series_names():
     conn.close()
 
     names = []
+
     for name in df["NAAM"].tolist():
         if name:
             clean = str(name).strip()
@@ -332,14 +335,19 @@ st.markdown(
 with st.expander("Onderhoud", expanded=False):
     if st.button("Cache reset"):
         st.cache_data.clear()
+        st.session_state.clear()
         st.rerun()
 
 # =========================================================
-# SEARCH UI
+# SEARCH UI - ECHT LIVE VIA streamlit-keyup
 # =========================================================
 all_series_names = load_all_series_names()
 
-zoekterm = st.text_input("Search series:")
+zoekterm = st_keyup(
+    "Search series:",
+    debounce=150,
+    key="live_search"
+)
 
 gekozen_serie = None
 
@@ -361,12 +369,16 @@ if zoekterm:
             with st.expander("Debug"):
                 st.write("Zoekterm:", term)
                 st.write("Aantal geladen serienamen:", len(all_series_names))
-                st.write("NCIS-test:", [n for n in all_series_names if "ncis" in n.lower()])
+                st.write(
+                    "NCIS-test:",
+                    [n for n in all_series_names if "ncis" in n.lower()]
+                )
                 st.write("Eerste 50:", all_series_names[:50])
+
         else:
             st.markdown(f"**{len(matches)} resultaten:**")
 
-            for i, name in enumerate(matches[:20]):
+            for i, name in enumerate(matches[:25]):
                 if st.button(name, key=f"serie_{i}_{name}"):
                     st.session_state["gekozen_serie"] = name
                     st.rerun()
