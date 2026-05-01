@@ -450,6 +450,7 @@ if zoekterm:
     if term != st.session_state["laatste_zoekterm"]:
         st.session_state["toon_resultaten"] = True
         st.session_state["laatste_zoekterm"] = term
+        st.session_state["gekozen_serie"] = None
 
     if len(term) < 3:
         st.info("Typ minstens 3 karakters...")
@@ -495,9 +496,6 @@ gekozen_serie = st.session_state.get("gekozen_serie")
 # =========================================================
 # RESULTS
 # =========================================================
-if not gekozen_serie:
-    st.info("Typ minstens 3 letters en kies een serie.")
-
 if gekozen_serie:
     df = search_series_exact(gekozen_serie)
 
