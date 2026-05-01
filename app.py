@@ -26,7 +26,7 @@ TMDB_API_KEY = st.secrets["TMDB_API_KEY"]
 TMDB_IMG_BASE = "https://image.tmdb.org/t/p/w300"
 
 # =========================================================
-# GENRE NORMALISATIE
+# GENRES
 # =========================================================
 GENRE_CANONICAL = {
     "action": "Action",
@@ -213,7 +213,7 @@ def parse_date(date_str):
         return None
 
 # =========================================================
-# GENRES
+# GENRE BADGES
 # =========================================================
 def normalize_genres(raw):
     if not raw:
@@ -295,11 +295,15 @@ def render_season_blocks(seasons):
             display: inline-block;
         }
 
-        .episode-watched {
+        .green {
             background-color: #2ecc71;
         }
 
-        .episode-unwatched {
+        .red {
+            background-color: #e74c3c;
+        }
+
+        .blue {
             background-color: #3498db;
         }
 
@@ -317,7 +321,12 @@ def render_season_blocks(seasons):
         episode_boxes = ""
 
         for ep in range(1, s["total"] + 1):
-            css_class = "episode-watched" if ep <= s["watched"] else "episode-unwatched"
+            if s["watched"] == 0:
+                css_class = "blue"
+            elif ep <= s["watched"]:
+                css_class = "green"
+            else:
+                css_class = "red"
 
             episode_boxes += (
                 f'<span class="episode-box {css_class}" '
@@ -391,7 +400,7 @@ def search_series_exact(series_name):
     return df
 
 # =========================================================
-# UI TITLE
+# MAIN TITLE
 # =========================================================
 st.markdown(
     """
@@ -404,65 +413,71 @@ st.markdown(
 )
 
 # =========================================================
-# CACHE RESET
+# SIDEBAR SEARCH
 # =========================================================
-with st.expander("Onderhoud", expanded=False):
-    if st.button("Cache reset"):
-        st.cache_data.clear()
-        st.session_state.clear()
-        st.rerun()
+with st.sidebar:
+    st.header("Zoeken")
 
-# =========================================================
-# SEARCH UI
-# =========================================================
-all_series_names = load_all_series_names()
+    with st.expander("Onderhoud", expanded=False):
+        if st.button("Cache reset", use_container_width=True):
+            st.cache_data.clear()
+            st.session_state.clear()
+            st.rerun()
 
-zoekterm = st_keyup(
-    "Search series:",
-    debounce=150,
-    key="live_search"
-)
+    all_series_names = load_all_series_names()
 
-gekozen_serie = None
+    zoekterm = st_keyup(
+        "Search series:",
+        debounce=150,
+        key="live_search"
+    )
 
-if zoekterm:
-    term = zoekterm.strip().lower()
+    if "gekozen_serie" not in st.session_state:
+        st.session_state["gekozen_serie"] = None
 
-    if len(term) < 3:
-        st.info("Typ minstens 3 karakters...")
-    else:
-        matches = [
-            name
-            for name in all_series_names
-            if term in name.lower()
-        ]
+    if zoekterm:
+        term = zoekterm.strip().lower()
 
-        if not matches:
-            st.warning("Geen series gevonden.")
-
-            with st.expander("Debug"):
-                st.write("Zoekterm:", term)
-                st.write("Aantal geladen serienamen:", len(all_series_names))
-                st.write(
-                    "NCIS-test:",
-                    [n for n in all_series_names if "ncis" in n.lower()]
-                )
-                st.write("Eerste 50:", all_series_names[:50])
-
+        if len(term) < 3:
+            st.info("Typ minstens 3 karakters...")
         else:
-            st.markdown(f"**{len(matches)} resultaten:**")
+            matches = [
+                name
+                for name in all_series_names
+                if term in name.lower()
+            ]
 
-            for i, name in enumerate(matches[:25]):
-                if st.button(name, key=f"serie_{i}_{name}"):
-                    st.session_state["gekozen_serie"] = name
-                    st.rerun()
+            if not matches:
+                st.warning("Geen series gevonden.")
 
-if "gekozen_serie" in st.session_state:
-    gekozen_serie = st.session_state["gekozen_serie"]
+                with st.expander("Debug"):
+                    st.write("Zoekterm:", term)
+                    st.write("Aantal geladen serienamen:", len(all_series_names))
+                    st.write(
+                        "NCIS-test:",
+                        [n for n in all_series_names if "ncis" in n.lower()]
+                    )
+                    st.write("Eerste 50:", all_series_names[:50])
+
+            else:
+                st.caption(f"{len(matches)} resultaten gevonden")
+
+                for i, name in enumerate(matches[:50]):
+                    if st.button(name, key=f"serie_{i}_{name}", use_container_width=True):
+                        st.session_state["gekozen_serie"] = name
+                        st.rerun()
+
+                if len(matches) > 50:
+                    st.caption(f"Nog {len(matches) - 50} verborgen. Typ verder om te verfijnen.")
+
+gekozen_serie = st.session_state.get("gekozen_serie")
 
 # =========================================================
 # RESULTS
 # =========================================================
+if not gekozen_serie:
+    st.info("Zoek links in de sidebar en kies een serie.")
+
 if gekozen_serie:
     df = search_series_exact(gekozen_serie)
 
