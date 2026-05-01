@@ -448,24 +448,73 @@ if gekozen_serie:
                     seasons = parse_seasons(row["SEASONSEPISODES"])
 
                     if seasons:
-                        st.markdown("### Seizoenen")
+    st.markdown("### Seizoenen")
 
-                        for s in seasons:
-                            icon = (
-                                "✅" if s["completed"]
-                                else "🔵" if s["watched"] > 0
-                                else "⚪"
-                            )
+    st.markdown(
+        """
+        <style>
+        .season-line {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 10px;
+            flex-wrap: wrap;
+        }
 
-                            line = (
-                                f"{icon} **S{s['season']:02d}** — "
-                                f"{s['watched']} / {s['total']} afleveringen"
-                            )
+        .season-label {
+            font-weight: 700;
+            min-width: 42px;
+        }
 
-                            if s["left"] > 0:
-                                line += f" — **{s['left']} over**"
+        .episode-boxes {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 3px;
+        }
 
-                            st.markdown(line)
+        .episode-box {
+            width: 14px;
+            height: 14px;
+            border-radius: 3px;
+            display: inline-block;
+        }
+
+        .episode-watched {
+            background-color: #2ecc71;
+        }
+
+        .episode-unwatched {
+            background-color: #3498db;
+        }
+
+        .season-count {
+            font-weight: 600;
+            white-space: nowrap;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
+
+    for s in seasons:
+        episode_boxes = ""
+
+        for ep in range(1, s["total"] + 1):
+            css_class = "episode-watched" if ep <= s["watched"] else "episode-unwatched"
+            episode_boxes += (
+                f'<span class="episode-box {css_class}" '
+                f'title="S{s["season"]:02d}E{ep:02d}"></span>'
+            )
+
+        html = f"""
+        <div class="season-line">
+            <div class="season-label">S{s["season"]:02d} -</div>
+            <div class="episode-boxes">{episode_boxes}</div>
+            <div class="season-count">{s["watched"]} / {s["total"]} afleveringen</div>
+        </div>
+        """
+
+        st.markdown(html, unsafe_allow_html=True)
 
                     if row["PLOT"]:
                         st.markdown("**Plot:**")
