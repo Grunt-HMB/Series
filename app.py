@@ -400,92 +400,77 @@ def search_series_exact(series_name):
     return df
 
 # =========================================================
-# MAIN TITLE
-# =========================================================
-st.markdown(
-    """
-    <h1 style="margin-bottom:0.2em;">📺 Series Progress</h1>
-    <p style="color:#666; margin-top:0;">
-        Track what you're watching, what's next, and what's done.
-    </p>
-    """,
-    unsafe_allow_html=True
-)
-
-# =========================================================
 # SESSION STATE
 # =========================================================
 if "gekozen_serie" not in st.session_state:
     st.session_state["gekozen_serie"] = None
 
-if "zoeken_actief" not in st.session_state:
-    st.session_state["zoeken_actief"] = True
+# =========================================================
+# MAIN TITLE + REFRESH
+# =========================================================
+col_title, col_refresh = st.columns([10, 1])
 
-# =========================================================
-# ONDERHOUD
-# =========================================================
-with st.expander("Onderhoud", expanded=False):
-    if st.button("Cache reset", use_container_width=True):
+with col_title:
+    st.markdown(
+        """
+        <h1 style="margin-bottom:0.2em;">📺 Series Progress</h1>
+        <p style="color:#666; margin-top:0;">
+            Track what you're watching, what's next, and what's done.
+        </p>
+        """,
+        unsafe_allow_html=True
+    )
+
+with col_refresh:
+    st.write("")
+    if st.button("🔄", help="Refresh / cache reset"):
         st.cache_data.clear()
         st.session_state.clear()
         st.rerun()
 
 # =========================================================
-# SEARCH UI - MOBIEL
+# SEARCH UI
 # =========================================================
 all_series_names = load_all_series_names()
 
-if st.session_state["gekozen_serie"] and not st.session_state["zoeken_actief"]:
-    col_a, col_b = st.columns([2, 1])
+zoekterm = st_keyup(
+    "Search series:",
+    debounce=150,
+    key="live_search"
+)
 
-    with col_a:
-        st.success(f"Gekozen: {st.session_state['gekozen_serie']}")
+if zoekterm:
+    term = zoekterm.strip().lower()
 
-    with col_b:
-        if st.button("Andere zoeken", use_container_width=True):
-            st.session_state["zoeken_actief"] = True
-            st.rerun()
+    if len(term) < 3:
+        st.info("Typ minstens 3 karakters...")
+    else:
+        matches = [
+            name
+            for name in all_series_names
+            if term in name.lower()
+        ]
 
-if st.session_state["zoeken_actief"]:
-    zoekterm = st_keyup(
-        "Search series:",
-        debounce=150,
-        key="live_search"
-    )
+        if not matches:
+            st.warning("Geen series gevonden.")
 
-    if zoekterm:
-        term = zoekterm.strip().lower()
+            with st.expander("Debug"):
+                st.write("Zoekterm:", term)
+                st.write("Aantal geladen serienamen:", len(all_series_names))
+                st.write(
+                    "NCIS-test:",
+                    [n for n in all_series_names if "ncis" in n.lower()]
+                )
+                st.write("Eerste 50:", all_series_names[:50])
 
-        if len(term) < 3:
-            st.info("Typ minstens 3 karakters...")
         else:
-            matches = [
-                name
-                for name in all_series_names
-                if term in name.lower()
-            ]
+            st.caption(f"{len(matches)} resultaten gevonden")
 
-            if not matches:
-                st.warning("Geen series gevonden.")
-
-                with st.expander("Debug"):
-                    st.write("Zoekterm:", term)
-                    st.write("Aantal geladen serienamen:", len(all_series_names))
-                    st.write(
-                        "NCIS-test:",
-                        [n for n in all_series_names if "ncis" in n.lower()]
-                    )
-                    st.write("Eerste 50:", all_series_names[:50])
-
-            else:
-                st.caption(f"{len(matches)} resultaten gevonden")
-
-                with st.expander(f"Alle {len(matches)} resultaten tonen", expanded=True):
-                    for i, name in enumerate(matches):
-                        if st.button(name, key=f"serie_{i}_{name}", use_container_width=True):
-                            st.session_state["gekozen_serie"] = name
-                            st.session_state["zoeken_actief"] = False
-                            st.rerun()
+            with st.expander(f"Alle {len(matches)} resultaten tonen", expanded=True):
+                for i, name in enumerate(matches):
+                    if st.button(name, key=f"serie_{i}_{name}", use_container_width=True):
+                        st.session_state["gekozen_serie"] = name
+                        st.rerun()
 
 gekozen_serie = st.session_state.get("gekozen_serie")
 
