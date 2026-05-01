@@ -82,7 +82,7 @@ GENRE_BLACKLIST = {
 }
 
 # =========================================================
-# DOWNLOAD DB (CACHED)
+# DOWNLOAD DB
 # =========================================================
 @st.cache_data(ttl=600)
 def download_db():
@@ -95,7 +95,7 @@ def download_db():
     return LOCAL_DB
 
 # =========================================================
-# TMDB POSTER (CACHED)
+# TMDB POSTER
 # =========================================================
 @st.cache_data(ttl=86400)
 def get_tmdb_poster(tmdb_id):
@@ -211,7 +211,7 @@ def parse_date(date_str):
         return None
 
 # =========================================================
-# GENRES → BADGES
+# GENRES
 # =========================================================
 def normalize_genres(raw):
     if not raw:
@@ -259,9 +259,28 @@ def render_genre_badges(raw):
     return f'<div style="margin-top:6px;">{html}</div>'
 
 # =========================================================
-# DATABASE QUERY
+# DATABASE
 # =========================================================
-def search_series(term):
+@st.cache_data(ttl=600)
+def load_all_series_names():
+    conn = sqlite3.connect(download_db())
+
+    df = pd.read_sql_query(
+        """
+        SELECT DISTINCT NAAM
+        FROM tbl_Trakt
+        WHERE NAAM IS NOT NULL
+          AND TRIM(NAAM) <> ''
+        ORDER BY NAAM
+        """,
+        conn
+    )
+
+    conn.close()
+    return df["NAAM"].tolist()
+
+
+def search_series_exact(series_name):
     conn = sqlite3.connect(download_db())
 
     df = pd.read_sql_query(
@@ -276,18 +295,18 @@ def search_series(term):
             SEASONSEPISODES,
             UPDATED
         FROM tbl_Trakt
-        WHERE NAAM LIKE ?
+        WHERE NAAM = ?
         ORDER BY NAAM
         """,
         conn,
-        params=(f"%{term}%",)
+        params=(series_name,)
     )
 
     conn.close()
     return df
 
 # =========================================================
-# UI – TITLE
+# UI TITLE
 # =========================================================
 st.markdown(
     """
@@ -299,16 +318,44 @@ st.markdown(
     unsafe_allow_html=True
 )
 
+# =========================================================
+# SEARCH UI
+# =========================================================
+all_series_names = load_all_series_names()
+
 zoekterm = st.text_input("Search series:")
 
-# =========================================================
-# UI – RESULTS
-# =========================================================
+gekozen_serie = None
+
 if zoekterm.strip():
-    df = search_series(zoekterm)
+    term = zoekterm.strip().lower()
+
+    if len(term) < 3:
+        st.info("Typ minstens 3 karakters om te zoeken.")
+    else:
+        matches = [
+            name for name in all_series_names
+            if term in name.lower()
+        ]
+
+        if not matches:
+            st.warning("Geen series gevonden.")
+        else:
+            gekozen_serie = st.selectbox(
+                "Selecteer serie:",
+                matches,
+                index=None,
+                placeholder="Kies een serie..."
+            )
+
+# =========================================================
+# RESULTS
+# =========================================================
+if gekozen_serie:
+    df = search_series_exact(gekozen_serie)
 
     if df.empty:
-        st.warning("Geen series gevonden.")
+        st.warning("Geen gegevens gevonden voor deze serie.")
 
     for _, row in df.iterrows():
         watched, total, percent = parse_season_episodes(row["SEASONSEPISODES"])
@@ -322,12 +369,10 @@ if zoekterm.strip():
         with st.container(border=True):
             col1, col2 = st.columns([1, 2])
 
-            # POSTER
             with col1:
                 if poster_url:
                     st.image(poster_url, use_container_width=True)
 
-            # INFO
             with col2:
                 st.subheader(f"{row['NAAM']} ({row['YEAR']})")
 
@@ -356,7 +401,6 @@ if zoekterm.strip():
                 st.markdown(status_line, unsafe_allow_html=True)
                 st.progress(percent / 100)
 
-            # DETAILS
             with st.expander("Details", expanded=True):
                 st.markdown(
                     render_genre_badges(row["GENRE"]),
@@ -384,7 +428,6 @@ if zoekterm.strip():
                             line += f" — **{s['left']} over**"
 
                         st.markdown(line)
-                        st.progress(s["percent"] / 100)
 
                 if row["PLOT"]:
                     st.markdown("**Plot:**")
