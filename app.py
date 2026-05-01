@@ -277,7 +277,15 @@ def load_all_series_names():
     )
 
     conn.close()
-    return df["NAAM"].tolist()
+
+    names = []
+    for name in df["NAAM"].tolist():
+        if name:
+            clean = str(name).strip()
+            if clean:
+                names.append(clean)
+
+    return sorted(set(names), key=str.lower)
 
 
 def search_series_exact(series_name):
@@ -295,11 +303,11 @@ def search_series_exact(series_name):
             SEASONSEPISODES,
             UPDATED
         FROM tbl_Trakt
-        WHERE NAAM = ?
+        WHERE TRIM(NAAM) = ?
         ORDER BY NAAM
         """,
         conn,
-        params=(series_name,)
+        params=(series_name.strip(),)
     )
 
     conn.close()
@@ -319,6 +327,14 @@ st.markdown(
 )
 
 # =========================================================
+# CACHE RESET
+# =========================================================
+with st.expander("Onderhoud", expanded=False):
+    if st.button("Cache reset"):
+        st.cache_data.clear()
+        st.rerun()
+
+# =========================================================
 # SEARCH UI
 # =========================================================
 all_series_names = load_all_series_names()
@@ -327,26 +343,36 @@ zoekterm = st.text_input("Search series:")
 
 gekozen_serie = None
 
-if zoekterm.strip():
+if zoekterm:
     term = zoekterm.strip().lower()
 
     if len(term) < 3:
-        st.info("Typ minstens 3 karakters om te zoeken.")
+        st.info("Typ minstens 3 karakters...")
     else:
         matches = [
-            name for name in all_series_names
+            name
+            for name in all_series_names
             if term in name.lower()
         ]
 
         if not matches:
             st.warning("Geen series gevonden.")
+
+            with st.expander("Debug"):
+                st.write("Zoekterm:", term)
+                st.write("Aantal geladen serienamen:", len(all_series_names))
+                st.write("NCIS-test:", [n for n in all_series_names if "ncis" in n.lower()])
+                st.write("Eerste 50:", all_series_names[:50])
         else:
-            gekozen_serie = st.selectbox(
-                "Selecteer serie:",
-                matches,
-                index=None,
-                placeholder="Kies een serie..."
-            )
+            st.markdown(f"**{len(matches)} resultaten:**")
+
+            for i, name in enumerate(matches[:20]):
+                if st.button(name, key=f"serie_{i}_{name}"):
+                    st.session_state["gekozen_serie"] = name
+                    st.rerun()
+
+if "gekozen_serie" in st.session_state:
+    gekozen_serie = st.session_state["gekozen_serie"]
 
 # =========================================================
 # RESULTS
@@ -356,81 +382,81 @@ if gekozen_serie:
 
     if df.empty:
         st.warning("Geen gegevens gevonden voor deze serie.")
+    else:
+        for _, row in df.iterrows():
+            watched, total, percent = parse_season_episodes(row["SEASONSEPISODES"])
+            status = determine_status(watched, total)
+            episodes_left = max(total - watched, 0)
 
-    for _, row in df.iterrows():
-        watched, total, percent = parse_season_episodes(row["SEASONSEPISODES"])
-        status = determine_status(watched, total)
-        episodes_left = max(total - watched, 0)
+            prog = parse_progress(row["PROGRESS"])
+            last_seen_dt = parse_date(prog["date"])
+            poster_url = get_tmdb_poster(row["TMDB_ID"])
 
-        prog = parse_progress(row["PROGRESS"])
-        last_seen_dt = parse_date(prog["date"])
-        poster_url = get_tmdb_poster(row["TMDB_ID"])
+            with st.container(border=True):
+                col1, col2 = st.columns([1, 2])
 
-        with st.container(border=True):
-            col1, col2 = st.columns([1, 2])
+                with col1:
+                    if poster_url:
+                        st.image(poster_url, use_container_width=True)
 
-            with col1:
-                if poster_url:
-                    st.image(poster_url, use_container_width=True)
-
-            with col2:
-                st.subheader(f"{row['NAAM']} ({row['YEAR']})")
-
-                st.markdown(
-                    "🟢 **Completed**" if status == "Completed"
-                    else "🔵 **Watching**" if status == "Watching"
-                    else "⚪ **Not started**"
-                )
-
-                if status == "Watching" and prog["season"] is not None:
-                    seen = (
-                        last_seen_dt.strftime("%d-%m-%Y %H:%M")
-                        if last_seen_dt else prog["date"]
-                    )
+                with col2:
+                    st.subheader(f"{row['NAAM']} ({row['YEAR']})")
 
                     st.markdown(
-                        f"👁️ **Laatst gezien:** "
-                        f"S{prog['season']:02d}E{prog['episode']:02d} · {seen}"
+                        "🟢 **Completed**" if status == "Completed"
+                        else "🔵 **Watching**" if status == "Watching"
+                        else "⚪ **Not started**"
                     )
 
-                status_line = (
-                    f"⏳ **{episodes_left} left** &nbsp;&nbsp; "
-                    f"📊 **{watched} / {total} ({percent}%)**"
-                )
-
-                st.markdown(status_line, unsafe_allow_html=True)
-                st.progress(percent / 100)
-
-            with st.expander("Details", expanded=True):
-                st.markdown(
-                    render_genre_badges(row["GENRE"]),
-                    unsafe_allow_html=True
-                )
-
-                seasons = parse_seasons(row["SEASONSEPISODES"])
-
-                if seasons:
-                    st.markdown("### Seizoenen")
-
-                    for s in seasons:
-                        icon = (
-                            "✅" if s["completed"]
-                            else "🔵" if s["watched"] > 0
-                            else "⚪"
+                    if status == "Watching" and prog["season"] is not None:
+                        seen = (
+                            last_seen_dt.strftime("%d-%m-%Y %H:%M")
+                            if last_seen_dt else prog["date"]
                         )
 
-                        line = (
-                            f"{icon} **S{s['season']:02d}** — "
-                            f"{s['watched']} / {s['total']} afleveringen"
+                        st.markdown(
+                            f"👁️ **Laatst gezien:** "
+                            f"S{prog['season']:02d}E{prog['episode']:02d} · {seen}"
                         )
 
-                        if s["left"] > 0:
-                            line += f" — **{s['left']} over**"
+                    status_line = (
+                        f"⏳ **{episodes_left} left** &nbsp;&nbsp; "
+                        f"📊 **{watched} / {total} ({percent}%)**"
+                    )
 
-                        st.markdown(line)
+                    st.markdown(status_line, unsafe_allow_html=True)
+                    st.progress(percent / 100)
 
-                if row["PLOT"]:
-                    st.markdown("**Plot:**")
-                    st.write(row["PLOT"])
+                with st.expander("Details", expanded=True):
+                    st.markdown(
+                        render_genre_badges(row["GENRE"]),
+                        unsafe_allow_html=True
+                    )
 
-                st.caption(f"Last updated: {row['UPDATED']}")
+                    seasons = parse_seasons(row["SEASONSEPISODES"])
+
+                    if seasons:
+                        st.markdown("### Seizoenen")
+
+                        for s in seasons:
+                            icon = (
+                                "✅" if s["completed"]
+                                else "🔵" if s["watched"] > 0
+                                else "⚪"
+                            )
+
+                            line = (
+                                f"{icon} **S{s['season']:02d}** — "
+                                f"{s['watched']} / {s['total']} afleveringen"
+                            )
+
+                            if s["left"] > 0:
+                                line += f" — **{s['left']} over**"
+
+                            st.markdown(line)
+
+                    if row["PLOT"]:
+                        st.markdown("**Plot:**")
+                        st.write(row["PLOT"])
+
+                    st.caption(f"Last updated: {row['UPDATED']}")
